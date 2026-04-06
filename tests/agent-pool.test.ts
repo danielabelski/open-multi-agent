@@ -178,6 +178,89 @@ describe('AgentPool', () => {
     })
   })
 
+  describe('per-agent serialization (#72)', () => {
+    it('serializes concurrent runs on the same agent', async () => {
+      const executionLog: string[] = []
+
+      const agent = createMockAgent('dev')
+      ;(agent.run as ReturnType<typeof vi.fn>).mockImplementation(async (prompt: string) => {
+        executionLog.push(`start:${prompt}`)
+        await new Promise(r => setTimeout(r, 50))
+        executionLog.push(`end:${prompt}`)
+        return SUCCESS_RESULT
+      })
+
+      const pool = new AgentPool(5)
+      pool.add(agent)
+
+      // Fire two runs for the same agent concurrently
+      await Promise.all([
+        pool.run('dev', 'task1'),
+        pool.run('dev', 'task2'),
+      ])
+
+      // With per-agent serialization, runs must not overlap:
+      // [start:task1, end:task1, start:task2, end:task2] (or reverse order)
+      // i.e. no interleaving like [start:task1, start:task2, ...]
+      expect(executionLog).toHaveLength(4)
+      expect(executionLog[0]).toMatch(/^start:/)
+      expect(executionLog[1]).toMatch(/^end:/)
+      expect(executionLog[2]).toMatch(/^start:/)
+      expect(executionLog[3]).toMatch(/^end:/)
+    })
+
+    it('allows different agents to run in parallel', async () => {
+      let concurrent = 0
+      let maxConcurrent = 0
+
+      const makeTimedAgent = (name: string): Agent => {
+        const agent = createMockAgent(name)
+        ;(agent.run as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+          concurrent++
+          maxConcurrent = Math.max(maxConcurrent, concurrent)
+          await new Promise(r => setTimeout(r, 50))
+          concurrent--
+          return SUCCESS_RESULT
+        })
+        return agent
+      }
+
+      const pool = new AgentPool(5)
+      pool.add(makeTimedAgent('a'))
+      pool.add(makeTimedAgent('b'))
+
+      await Promise.all([
+        pool.run('a', 'x'),
+        pool.run('b', 'y'),
+      ])
+
+      // Different agents should run concurrently
+      expect(maxConcurrent).toBe(2)
+    })
+
+    it('releases agent lock even when run() throws', async () => {
+      const agent = createMockAgent('dev')
+      let callCount = 0
+      ;(agent.run as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+        callCount++
+        if (callCount === 1) throw new Error('first run fails')
+        return SUCCESS_RESULT
+      })
+
+      const pool = new AgentPool(5)
+      pool.add(agent)
+
+      // First run fails, second should still execute (not deadlock)
+      const results = await Promise.allSettled([
+        pool.run('dev', 'will-fail'),
+        pool.run('dev', 'should-succeed'),
+      ])
+
+      expect(results[0]!.status).toBe('rejected')
+      expect(results[1]!.status).toBe('fulfilled')
+    })
+  })
+
   describe('concurrency', () => {
     it('respects maxConcurrency limit', async () => {
       let concurrent = 0
