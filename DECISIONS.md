@@ -30,14 +30,8 @@ If you're considering a PR in any of these areas, please open a discussion first
 
 **What**: Anthropic's protocol for connecting LLMs to external tools and data sources.
 
-**Why not**: MCP is valuable but targets a different layer. Our `defineTool()` API already lets users wrap any external service as a tool in ~10 lines of code. Adding MCP would mean maintaining protocol compatibility, transport layers, and tool discovery — complexity that serves tool platform builders, not our target users who just want to run agent teams.
-
-### 5. Dashboard / Visualization
-
-**What**: Built-in web UI to visualize task DAGs, agent activity, and token usage.
-
-**Why not**: We expose data, we don't build UI. The `onProgress` callback and upcoming `onTrace` (#18) give users all the raw data. They can pipe it into Grafana, build a custom dashboard, or use console logs. Shipping a web UI means owning a frontend stack, which is outside our scope.
+**Why not now**: Our `defineTool()` API lets users wrap any external service as a tool in ~10 lines of code, and adding MCP would introduce `@modelcontextprotocol/sdk` as a new dependency plus transport layer management, breaking our 3-dependency minimal principle. However, the MCP tool ecosystem has grown significantly — many services now ship MCP servers directly, and asking users to re-wrap each one via `defineTool()` creates unnecessary friction. **This decision may be revisited** when community demand is clear or a lightweight integration approach emerges (e.g., optional peer dependency).
 
 ---
 
-*Last updated: 2026-04-03*
+*Last updated: 2026-04-07*
