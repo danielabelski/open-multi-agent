@@ -841,21 +841,47 @@ export class OpenMultiAgent {
     if (agentConfigs.length > 0 && isSimpleGoal(goal)) {
       const bestAgent = selectBestAgent(goal, agentConfigs)
 
+      // Use buildAgent() + agent.run() directly instead of this.runAgent()
+      // to avoid duplicate progress events and double completedTaskCount.
+      // Events are emitted here; counting is handled by buildTeamRunResult().
+      const effectiveBudget = resolveTokenBudget(bestAgent.maxTokenBudget, this.config.maxTokenBudget)
+      const effective: AgentConfig = {
+        ...bestAgent,
+        provider: bestAgent.provider ?? this.config.defaultProvider,
+        baseURL: bestAgent.baseURL ?? this.config.defaultBaseURL,
+        apiKey: bestAgent.apiKey ?? this.config.defaultApiKey,
+        maxTokenBudget: effectiveBudget,
+      }
+      const agent = buildAgent(effective)
+
       this.config.onProgress?.({
         type: 'agent_start',
         agent: bestAgent.name,
         data: { phase: 'short-circuit', goal },
       })
 
-      // Forward the caller's abort signal so short-circuit honours the same
-      // cancellation contract as the full coordinator path.
-      const result = await this.runAgent(
-        bestAgent,
-        goal,
-        options?.abortSignal ? { abortSignal: options.abortSignal } : undefined,
-      )
-      const agentResults = new Map<string, AgentRunResult>()
-      agentResults.set(bestAgent.name, result)
+      const traceFields = this.config.onTrace
+        ? { onTrace: this.config.onTrace, runId: generateRunId(), traceAgent: bestAgent.name }
+        : null
+      const abortFields = options?.abortSignal ? { abortSignal: options.abortSignal } : null
+      const runOptions: Partial<RunOptions> | undefined =
+        traceFields || abortFields
+          ? { ...(traceFields ?? {}), ...(abortFields ?? {}) }
+          : undefined
+
+      const result = await agent.run(goal, runOptions)
+
+      if (result.budgetExceeded) {
+        this.config.onProgress?.({
+          type: 'budget_exceeded',
+          agent: bestAgent.name,
+          data: new TokenBudgetExceededError(
+            bestAgent.name,
+            result.tokenUsage.input_tokens + result.tokenUsage.output_tokens,
+            effectiveBudget ?? 0,
+          ),
+        })
+      }
 
       this.config.onProgress?.({
         type: 'agent_complete',
@@ -863,6 +889,8 @@ export class OpenMultiAgent {
         data: { phase: 'short-circuit', result },
       })
 
+      const agentResults = new Map<string, AgentRunResult>()
+      agentResults.set(bestAgent.name, result)
       return this.buildTeamRunResult(agentResults)
     }
 

@@ -348,46 +348,39 @@ describe('runTeam short-circuit', () => {
   })
 
   // -------------------------------------------------------------------------
-  // Regression: abortSignal forwarding (PR #70 review point 4)
+  // Regression: no duplicate progress events (#82)
   //
-  // The short-circuit path must forward `options.abortSignal` from runTeam
-  // through to runAgent, otherwise simple-goal cancellations are silently
-  // ignored — a regression vs the full coordinator path which already
-  // honours the signal via PR #69.
+  // The short-circuit path must emit exactly one agent_start and one
+  // agent_complete event. Before the fix, calling this.runAgent() added
+  // a second pair of events on top of the ones emitted by the short-circuit
+  // block itself, and buildTeamRunResult() double-counted completedTasks.
   // -------------------------------------------------------------------------
-  it('forwards abortSignal from runTeam to runAgent in short-circuit path', async () => {
+  it('emits exactly one agent_start and one agent_complete (no duplicates)', async () => {
     mockAdapterResponses = ['done']
 
-    const oma = new OpenMultiAgent({ defaultModel: 'mock-model' })
+    const events: OrchestratorEvent[] = []
+    const oma = new OpenMultiAgent({
+      defaultModel: 'mock-model',
+      onProgress: (e) => events.push(e),
+    })
     const team = oma.createTeam('t', teamCfg())
-
-    // Spy on runAgent to capture the options argument
-    const runAgentSpy = vi.spyOn(oma, 'runAgent')
-
-    const controller = new AbortController()
-    await oma.runTeam(team, 'Say hello', { abortSignal: controller.signal })
-
-    expect(runAgentSpy).toHaveBeenCalledTimes(1)
-    const callArgs = runAgentSpy.mock.calls[0]!
-    // Third positional arg must contain the same signal we passed in
-    expect(callArgs[2]).toBeDefined()
-    expect(callArgs[2]?.abortSignal).toBe(controller.signal)
-  })
-
-  it('runAgent invoked without abortSignal when caller omits it', async () => {
-    mockAdapterResponses = ['done']
-
-    const oma = new OpenMultiAgent({ defaultModel: 'mock-model' })
-    const team = oma.createTeam('t', teamCfg())
-
-    const runAgentSpy = vi.spyOn(oma, 'runAgent')
 
     await oma.runTeam(team, 'Say hello')
 
-    expect(runAgentSpy).toHaveBeenCalledTimes(1)
-    const callArgs = runAgentSpy.mock.calls[0]!
-    // Third positional arg should be undefined when caller doesn't pass one
-    expect(callArgs[2]).toBeUndefined()
+    const starts = events.filter(e => e.type === 'agent_start')
+    const completes = events.filter(e => e.type === 'agent_complete')
+    expect(starts).toHaveLength(1)
+    expect(completes).toHaveLength(1)
+  })
+
+  it('completedTaskCount is exactly 1 after a successful short-circuit run', async () => {
+    mockAdapterResponses = ['done']
+    const oma = new OpenMultiAgent({ defaultModel: 'mock-model' })
+    const team = oma.createTeam('t', teamCfg())
+
+    await oma.runTeam(team, 'Say hello')
+
+    expect(oma.getStatus().completedTasks).toBe(1)
   })
 
   it('aborted signal causes the underlying agent loop to skip the LLM call', async () => {
