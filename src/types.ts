@@ -170,12 +170,18 @@ export interface ToolResult {
  * A tool registered with the framework.
  *
  * `inputSchema` is a Zod schema used for validation before `execute` is called.
- * At API call time it is converted to JSON Schema via {@link LLMToolDef}.
+ * At API call time it is converted to JSON Schema for {@link LLMToolDef}, unless
+ * `llmInputSchema` is set (e.g. MCP tools ship JSON Schema from the server).
  */
 export interface ToolDefinition<TInput = Record<string, unknown>> {
   readonly name: string
   readonly description: string
   readonly inputSchema: ZodSchema<TInput>
+  /**
+   * When present, used as {@link LLMToolDef.inputSchema} as-is instead of
+   * deriving JSON Schema from `inputSchema` (Zod).
+   */
+  readonly llmInputSchema?: Record<string, unknown>
   execute(input: TInput, context: ToolUseContext): Promise<ToolResult>
 }
 

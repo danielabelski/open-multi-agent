@@ -72,12 +72,19 @@ export function defineTool<TInput>(config: {
   name: string
   description: string
   inputSchema: ZodSchema<TInput>
+  /**
+   * Optional JSON Schema for the LLM (bypasses Zod → JSON Schema conversion).
+   */
+  llmInputSchema?: Record<string, unknown>
   execute: (input: TInput, context: ToolUseContext) => Promise<ToolResult>
 }): ToolDefinition<TInput> {
   return {
     name: config.name,
     description: config.description,
     inputSchema: config.inputSchema,
+    ...(config.llmInputSchema !== undefined
+      ? { llmInputSchema: config.llmInputSchema }
+      : {}),
     execute: config.execute,
   }
 }
@@ -169,7 +176,8 @@ export class ToolRegistry {
    */
   toToolDefs(): LLMToolDef[] {
     return Array.from(this.tools.values()).map((tool) => {
-      const schema = zodToJsonSchema(tool.inputSchema)
+      const schema =
+        tool.llmInputSchema ?? zodToJsonSchema(tool.inputSchema)
       return {
         name: tool.name,
         description: tool.description,
@@ -194,13 +202,20 @@ export class ToolRegistry {
   toLLMTools(): Array<{
     name: string
     description: string
-    input_schema: {
-      type: 'object'
-      properties: Record<string, JSONSchemaProperty>
-      required?: string[]
-    }
+    /** Anthropic-style tool input JSON Schema (`type` is usually `object`). */
+    input_schema: Record<string, unknown>
   }> {
     return Array.from(this.tools.values()).map((tool) => {
+      if (tool.llmInputSchema !== undefined) {
+        return {
+          name: tool.name,
+          description: tool.description,
+          input_schema: {
+            type: 'object' as const,
+            ...(tool.llmInputSchema as Record<string, unknown>),
+          },
+        }
+      }
       const schema = zodToJsonSchema(tool.inputSchema)
       return {
         name: tool.name,

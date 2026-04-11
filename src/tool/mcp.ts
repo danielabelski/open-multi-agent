@@ -5,22 +5,33 @@ import type { ToolDefinition } from '../types.js'
 interface MCPToolDescriptor {
   name: string
   description?: string
+  /** MCP tool JSON Schema; same shape LLM APIs expect for object parameters. */
+  inputSchema?: Record<string, unknown>
 }
 
 interface MCPListToolsResponse {
   tools?: MCPToolDescriptor[]
+  nextCursor?: string
 }
 
 interface MCPCallToolResponse {
-  content?: Array<{ type?: string; text?: string }>
+  content?: Array<Record<string, unknown>>
   structuredContent?: unknown
   isError?: boolean
+  toolResult?: unknown
 }
 
 interface MCPClientLike {
-  connect(transport: unknown): Promise<void>
-  listTools(): Promise<MCPListToolsResponse>
-  callTool(request: { name: string; arguments: Record<string, unknown> }): Promise<MCPCallToolResponse>
+  connect(transport: unknown, options?: { timeout?: number; signal?: AbortSignal }): Promise<void>
+  listTools(
+    params?: { cursor?: string },
+    options?: { timeout?: number; signal?: AbortSignal },
+  ): Promise<MCPListToolsResponse>
+  callTool(
+    request: { name: string; arguments: Record<string, unknown> },
+    resultSchema?: unknown,
+    options?: { timeout?: number; signal?: AbortSignal },
+  ): Promise<MCPCallToolResponse>
   close?: () => Promise<void>
 }
 
@@ -41,6 +52,8 @@ interface MCPModules {
   StdioClientTransport: StdioTransportConstructor
 }
 
+const DEFAULT_MCP_REQUEST_TIMEOUT_MS = 60_000
+
 async function loadMCPModules(): Promise<MCPModules> {
   const [{ Client }, { StdioClientTransport }] = await Promise.all([
     import('@modelcontextprotocol/sdk/client/index.js') as Promise<{
@@ -59,10 +72,14 @@ export interface ConnectMCPToolsConfig {
   env?: Record<string, string | undefined>
   cwd?: string
   /**
-   * Optional prefix used when generating framework tool names.
-   * Example: "github" -> "github/search_issues"
+   * Optional segment prepended to MCP tool names for the framework tool (and LLM) name.
+   * Example: prefix `github` + MCP tool `search_issues` → `github_search_issues`.
    */
   namePrefix?: string
+  /**
+   * Timeout (ms) for MCP connect and each `tools/list` page. Defaults to 60000.
+   */
+  requestTimeoutMs?: number
   /**
    * Client metadata sent to the MCP server.
    */
@@ -75,20 +92,100 @@ export interface ConnectedMCPTools {
   disconnect: () => Promise<void>
 }
 
+/**
+ * Build an LLM-safe tool name: MCP and prior examples used `prefix/name`, but
+ * Anthropic and other providers reject `/` in tool names.
+ */
 function normalizeToolName(rawName: string, namePrefix?: string): string {
-  if (namePrefix === undefined || namePrefix.trim() === '') {
-    return rawName
+  const trimmedPrefix = namePrefix?.trim()
+  const base =
+    trimmedPrefix !== undefined && trimmedPrefix !== ''
+      ? `${trimmedPrefix}_${rawName}`
+      : rawName
+  return base.replace(/\//g, '_')
+}
+
+/** MCP `tools/list` JSON Schema; forwarded to the LLM as-is (runtime validation stays `z.any()`). */
+function mcpLlmInputSchema(
+  schema: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  if (schema !== undefined && typeof schema === 'object' && !Array.isArray(schema)) {
+    return schema
   }
-  return `${namePrefix}/${rawName}`
+  return { type: 'object' }
+}
+
+function contentBlockToText(block: Record<string, unknown>): string | undefined {
+  const typ = block.type
+  if (typ === 'text' && typeof block.text === 'string') {
+    return block.text
+  }
+  if (typ === 'image' && typeof block.data === 'string') {
+    const mime =
+      typeof block.mimeType === 'string' ? block.mimeType : 'image/*'
+    return `[image ${mime}; base64 length=${block.data.length}]`
+  }
+  if (typ === 'audio' && typeof block.data === 'string') {
+    const mime =
+      typeof block.mimeType === 'string' ? block.mimeType : 'audio/*'
+    return `[audio ${mime}; base64 length=${block.data.length}]`
+  }
+  if (
+    typ === 'resource' &&
+    block.resource !== null &&
+    typeof block.resource === 'object'
+  ) {
+    const r = block.resource as Record<string, unknown>
+    const uri = typeof r.uri === 'string' ? r.uri : ''
+    if (typeof r.text === 'string') {
+      return `[resource ${uri}]\n${r.text}`
+    }
+    if (typeof r.blob === 'string') {
+      const mime = typeof r.mimeType === 'string' ? r.mimeType : ''
+      return `[resource ${uri}; mimeType=${mime}; blob base64 length=${r.blob.length}]`
+    }
+    return `[resource ${uri}]`
+  }
+  if (typ === 'resource_link') {
+    const uri = typeof block.uri === 'string' ? block.uri : ''
+    const name = typeof block.name === 'string' ? block.name : ''
+    const desc =
+      typeof block.description === 'string' ? block.description : ''
+    const head = `[resource_link name=${JSON.stringify(name)} uri=${JSON.stringify(uri)}]`
+    return desc === '' ? head : `${head}\n${desc}`
+  }
+  return undefined
 }
 
 function toToolResultData(result: MCPCallToolResponse): string {
-  const textBlocks = (result.content ?? [])
-    .filter((block) => block.type === 'text' && typeof block.text === 'string')
-    .map((block) => block.text as string)
+  if ('toolResult' in result && result.toolResult !== undefined) {
+    try {
+      return JSON.stringify(result.toolResult, null, 2)
+    } catch {
+      return String(result.toolResult)
+    }
+  }
 
-  if (textBlocks.length > 0) {
-    return textBlocks.join('\n')
+  const lines: string[] = []
+  for (const block of result.content ?? []) {
+    if (block === null || typeof block !== 'object') continue
+    const rec = block as Record<string, unknown>
+    const line = contentBlockToText(rec)
+    if (line !== undefined) {
+      lines.push(line)
+      continue
+    }
+    try {
+      lines.push(
+        `[${String(rec.type ?? 'unknown')}]\n${JSON.stringify(rec, null, 2)}`,
+      )
+    } catch {
+      lines.push('[mcp content block]')
+    }
+  }
+
+  if (lines.length > 0) {
+    return lines.join('\n')
   }
 
   if (result.structuredContent !== undefined) {
@@ -104,6 +201,26 @@ function toToolResultData(result: MCPCallToolResponse): string {
   } catch {
     return 'MCP tool completed with non-text output.'
   }
+}
+
+async function listAllMcpTools(
+  client: MCPClientLike,
+  requestOpts: { timeout: number },
+): Promise<MCPToolDescriptor[]> {
+  const acc: MCPToolDescriptor[] = []
+  let cursor: string | undefined
+  do {
+    const page = await client.listTools(
+      cursor !== undefined ? { cursor } : {},
+      requestOpts,
+    )
+    acc.push(...(page.tools ?? []))
+    cursor =
+      typeof page.nextCursor === 'string' && page.nextCursor !== ''
+        ? page.nextCursor
+        : undefined
+  } while (cursor !== undefined)
+  return acc
 }
 
 /**
@@ -130,23 +247,30 @@ export async function connectMCPTools(
     { capabilities: {} },
   )
 
-  await client.connect(transport)
+  const requestOpts = {
+    timeout: config.requestTimeoutMs ?? DEFAULT_MCP_REQUEST_TIMEOUT_MS,
+  }
 
-  const listed = await client.listTools()
-  const mcpTools = listed.tools ?? []
+  await client.connect(transport, requestOpts)
+
+  const mcpTools = await listAllMcpTools(client, requestOpts)
 
   const tools: ToolDefinition[] = mcpTools.map((tool) =>
     defineTool({
       name: normalizeToolName(tool.name, config.namePrefix),
       description: tool.description ?? `MCP tool: ${tool.name}`,
-      // MCP servers validate arguments internally.
       inputSchema: z.any(),
+      llmInputSchema: mcpLlmInputSchema(tool.inputSchema),
       execute: async (input: Record<string, unknown>) => {
         try {
-          const result = await client.callTool({
-            name: tool.name,
-            arguments: input,
-          })
+          const result = await client.callTool(
+            {
+              name: tool.name,
+              arguments: input,
+            },
+            undefined,
+            requestOpts,
+          )
           return {
             data: toToolResultData(result),
             isError: result.isError === true,
@@ -167,7 +291,6 @@ export async function connectMCPTools(
     tools,
     disconnect: async () => {
       await client.close?.()
-      await transport.close?.()
     },
   }
 }

@@ -8,13 +8,18 @@
  *   npx tsx examples/16-mcp-github.ts
  *
  * Prerequisites:
- *   - ANTHROPIC_API_KEY
+ *   - GEMINI_API_KEY
  *   - GITHUB_TOKEN
  *   - @modelcontextprotocol/sdk installed
  */
 
 import { Agent, ToolExecutor, ToolRegistry, registerBuiltInTools } from '../src/index.js'
 import { connectMCPTools } from '../src/mcp.js'
+
+if (!process.env.GITHUB_TOKEN?.trim()) {
+  console.error('Missing GITHUB_TOKEN: set a GitHub personal access token in the environment.')
+  process.exit(1)
+}
 
 const { tools, disconnect } = await connectMCPTools({
   command: 'npx',
@@ -34,7 +39,8 @@ const executor = new ToolExecutor(registry)
 const agent = new Agent(
   {
     name: 'github-agent',
-    model: 'claude-sonnet-4-6',
+    model: 'gemini-2.5-flash',
+    provider: 'gemini',
     tools: tools.map((tool) => tool.name),
     systemPrompt: 'Use GitHub MCP tools to answer repository questions.',
   },
