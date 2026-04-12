@@ -710,7 +710,7 @@ export class AgentRunner {
         // Parallel execution is critical for multi-tool responses where the
         // tools are independent (e.g. reading several files at once).
         // ------------------------------------------------------------------
-        const toolContext: ToolUseContext = this.buildToolContext()
+        const toolContext: ToolUseContext = this.buildToolContext(effectiveAbortSignal)
 
         const executionPromises = toolUseBlocks.map(async (block): Promise<{
           resultBlock: ToolResultBlock
@@ -845,14 +845,14 @@ export class AgentRunner {
    * Build the {@link ToolUseContext} passed to every tool execution.
    * Identifies this runner as the invoking agent.
    */
-  private buildToolContext(): ToolUseContext {
+  private buildToolContext(abortSignal?: AbortSignal): ToolUseContext {
     return {
       agent: {
         name: this.options.agentName ?? 'runner',
         role: this.options.agentRole ?? 'assistant',
         model: this.options.model,
       },
-      abortSignal: this.options.abortSignal,
+      abortSignal,
     }
   }
 }

@@ -163,6 +163,7 @@ function buildConfig(
     toolConfig: options.tools
       ? { functionCallingConfig: { mode: FunctionCallingConfigMode.AUTO } }
       : undefined,
+    abortSignal: options.abortSignal,
   }
 }
 

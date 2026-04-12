@@ -433,10 +433,7 @@ async function executeQueue(
   while (true) {
     // Check for cancellation before each dispatch round.
     if (ctx.abortSignal?.aborted) {
-      // Mark all remaining pending tasks as skipped.
-      for (const t of queue.getByStatus('pending')) {
-        queue.update(t.id, { status: 'skipped' as TaskStatus })
-      }
+      queue.skipRemaining('Skipped: run aborted.')
       break
     }
 
