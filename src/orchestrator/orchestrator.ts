@@ -217,7 +217,11 @@ function buildAgent(config: AgentConfig): Agent {
       registry.register(tool, { runtimeAdded: true })
     }
   }
-  const executor = new ToolExecutor(registry)
+  const executor = new ToolExecutor(registry, {
+    ...(config.maxToolOutputChars !== undefined
+      ? { maxToolOutputChars: config.maxToolOutputChars }
+      : {}),
+  })
   return new Agent(config, registry, executor)
 }
 
