@@ -218,7 +218,10 @@ export class AnthropicAdapter implements LLMAdapter {
         system: options.systemPrompt,
         tools: options.tools ? toAnthropicTools(options.tools) : undefined,
         temperature: options.temperature,
-      },
+        top_p: options.topP,
+        top_k: options.topK,
+        ...options.extraBody,
+      } as any,
       {
         signal: options.abortSignal,
       },
@@ -268,7 +271,10 @@ export class AnthropicAdapter implements LLMAdapter {
         system: options.systemPrompt,
         tools: options.tools ? toAnthropicTools(options.tools) : undefined,
         temperature: options.temperature,
-      },
+        top_p: options.topP,
+        top_k: options.topK,
+        ...options.extraBody,
+      } as any,
       {
         signal: options.abortSignal,
       },

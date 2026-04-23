@@ -303,6 +303,12 @@ export interface AgentConfig {
   /** Optional context compression policy to control input growth across turns. */
   readonly contextStrategy?: ContextStrategy
   readonly temperature?: number
+  readonly frequencyPenalty?: number
+  readonly presencePenalty?: number
+  readonly topP?: number
+  readonly topK?: number
+  readonly minP?: number
+  readonly extraBody?: Record<string, unknown>
   /**
    * Maximum wall-clock time (in milliseconds) for the entire agent run.
    * When exceeded, the run is aborted via `AbortSignal.timeout()`.
@@ -602,6 +608,12 @@ export interface CoordinatorConfig {
   readonly maxTurns?: number
   readonly maxTokens?: number
   readonly temperature?: number
+  readonly frequencyPenalty?: number
+  readonly presencePenalty?: number
+  readonly topP?: number
+  readonly topK?: number
+  readonly minP?: number
+  readonly extraBody?: Record<string, unknown>
   /** Predefined tool preset for common coordinator use cases. */
   readonly toolPreset?: 'readonly' | 'readwrite' | 'full'
   /** Tool names available to the coordinator. */
@@ -707,6 +719,12 @@ export interface LLMChatOptions {
   readonly tools?: readonly LLMToolDef[]
   readonly maxTokens?: number
   readonly temperature?: number
+  readonly frequencyPenalty?: number
+  readonly presencePenalty?: number
+  readonly topP?: number
+  readonly topK?: number
+  readonly minP?: number
+  readonly extraBody?: Record<string, unknown>
   readonly systemPrompt?: string
   readonly abortSignal?: AbortSignal
 }

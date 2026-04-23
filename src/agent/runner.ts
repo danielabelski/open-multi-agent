@@ -77,6 +77,18 @@ export interface RunnerOptions {
   readonly maxTokens?: number
   /** Sampling temperature passed to the adapter. */
   readonly temperature?: number
+  /** Nucleus sampling top_p. */
+  readonly topP?: number
+  /** Top-k sampling. */
+  readonly topK?: number
+  /** Min-p sampling. */
+  readonly minP?: number
+  /** Frequency penalty passed to the adapter. */
+  readonly frequencyPenalty?: number
+  /** Presence penalty passed to the adapter. */
+  readonly presencePenalty?: number
+  /** Extra body properties merged into the adapter payload. */
+  readonly extraBody?: Record<string, unknown>
   /** AbortSignal that cancels any in-flight adapter call and stops the loop. */
   readonly abortSignal?: AbortSignal
   /**
@@ -561,6 +573,12 @@ export class AgentRunner {
       tools: toolDefs.length > 0 ? toolDefs : undefined,
       maxTokens: this.options.maxTokens,
       temperature: this.options.temperature,
+      topP: this.options.topP,
+      topK: this.options.topK,
+      minP: this.options.minP,
+      frequencyPenalty: this.options.frequencyPenalty,
+      presencePenalty: this.options.presencePenalty,
+      extraBody: this.options.extraBody,
       systemPrompt: this.options.systemPrompt,
       abortSignal: effectiveAbortSignal,
     }
