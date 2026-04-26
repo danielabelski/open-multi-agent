@@ -210,6 +210,7 @@ console.log(`Tokens: ${result.totalTokenUsage.output_tokens} output tokens`)
 ### 集成
 
 - **[Engram](https://www.engram-memory.com)** — "Git for AI memory." Syncs knowledge across agents instantly and flags conflicts. ([repo](https://github.com/Agentscreator/engram-memory))
+- **[@agentsonar/oma](https://github.com/agentsonar/agentsonar-oma)** — Sidecar detecting cross-run delegation cycles, repetition, and rate bursts.
 
 做了 `open-multi-agent` 集成？[开个 Discussion](https://github.com/JackChen-me/open-multi-agent/discussions)，我加上来。
 

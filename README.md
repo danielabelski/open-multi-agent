@@ -210,6 +210,7 @@ Using `open-multi-agent` in production or a side project? [Open a discussion](ht
 ### Integrations
 
 - **[Engram](https://www.engram-memory.com)** — "Git for AI memory." Syncs knowledge across agents instantly and flags conflicts. ([repo](https://github.com/Agentscreator/engram-memory))
+- **[@agentsonar/oma](https://github.com/agentsonar/agentsonar-oma)** — Sidecar detecting cross-run delegation cycles, repetition, and rate bursts.
 
 Built an integration? [Open a discussion](https://github.com/JackChen-me/open-multi-agent/discussions) to get listed.
 
