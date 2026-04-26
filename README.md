@@ -13,7 +13,8 @@
 <h1 align="center">Open Multi-Agent</h1>
 
 <p align="center">
-  Lightweight multi-agent orchestration for TypeScript.
+  <strong>From a goal to a task DAG, automatically.</strong><br/>
+  TypeScript-native multi-agent orchestration. Three runtime dependencies.
 </p>
 
 <p align="center">
@@ -23,6 +24,7 @@
   <a href="https://codecov.io/gh/JackChen-me/open-multi-agent"><img src="https://codecov.io/gh/JackChen-me/open-multi-agent/graph/badge.svg" alt="codecov"></a>
   <a href="https://github.com/JackChen-me/open-multi-agent/blob/main/package.json"><img src="https://img.shields.io/badge/runtime_deps-3-brightgreen" alt="runtime deps"></a>
   <a href="https://github.com/JackChen-me/open-multi-agent/stargazers"><img src="https://img.shields.io/github/stars/JackChen-me/open-multi-agent" alt="GitHub stars"></a>
+  <a href="https://github.com/JackChen-me/open-multi-agent/network/members"><img src="https://img.shields.io/github/forks/JackChen-me/open-multi-agent" alt="GitHub forks"></a>
 </p>
 
 <p align="center">
@@ -31,30 +33,47 @@
 
 <br />
 
-`open-multi-agent` is a multi-agent orchestration framework for TypeScript backends. Give it a goal; a coordinator agent decomposes it into a task DAG, parallelizes independents, and synthesizes the result. Three runtime dependencies, drops into any Node.js backend, so your engineers describe the goal, not the graph.
+`open-multi-agent` is a multi-agent orchestration framework for TypeScript backends. Give it a goal; a coordinator agent decomposes it into a task DAG, parallelizes independents, and synthesizes the result. Three runtime dependencies, drops into any Node.js backend.
+
+> **Your engineers describe the goal, not the graph.**
+
+A typical run, streamed live through `onProgress`:
+
+```
+agent_start coordinator
+task_start design-api
+task_complete design-api
+task_start implement-handlers
+task_start scaffold-tests         // independent tasks run in parallel
+task_complete scaffold-tests
+task_complete implement-handlers
+task_start review-code            // unblocked after implementation
+task_complete review-code
+agent_complete coordinator        // synthesizes final result
+Success: true
+Tokens: 12847 output tokens
+```
 
 ## Features
 
 | Capability | What you get |
 |------------|--------------|
-| **Tools + delegation** | 6 built-in (`bash`, `file_read`, `file_write`, `file_edit`, `grep`, `glob`), plus opt-in `delegate_to_agent`. Define your own with `defineTool()` and Zod schemas. |
-| **MCP integration** | Connect to any MCP server via `connectMCPTools()`. ([`mcp-github`](examples/integrations/mcp-github.ts)) |
-| **Mix providers in one team** | Anthropic, OpenAI, Azure, Gemini, Grok, DeepSeek, MiniMax, Qiniu, Copilot native; Ollama / vLLM / LM Studio / OpenRouter / Groq via OpenAI-compatible. ([full list](#supported-providers)) |
+| **Goal-driven coordinator** | One `runTeam(team, goal)` call. The coordinator decomposes the goal into a task DAG, parallelizes independents, and synthesizes the result. |
+| **Mix providers in one team** | 9 native: Anthropic, OpenAI, Azure, Gemini, Grok, DeepSeek, MiniMax, Qiniu, Copilot. Ollama / vLLM / LM Studio / OpenRouter / Groq via OpenAI-compatible. ([full list](#supported-providers)) |
+| **Tools + MCP** | 6 built-in (`bash`, `file_*`, `grep`, `glob`), opt-in `delegate_to_agent`, custom tools via `defineTool()` + Zod, any MCP server via `connectMCPTools()`. |
 | **Streaming + structured output** | Token-by-token streaming on every adapter; Zod-validated final answer with auto-retry on parse failure. ([`structured-output`](examples/patterns/structured-output.ts)) |
-| **Context strategies** | `sliding-window`, `summarize`, `compact`, or a custom compressor. Keeps long-running agents under the token ceiling. |
-| **Task retry with backoff** | Per-task `maxRetries` with exponential backoff capped at 30s. ([`task-retry`](examples/patterns/task-retry.ts)) |
 | **Observability** | `onProgress` events, `onTrace` spans, post-run HTML dashboard rendering the executed task DAG. ([`trace-observability`](examples/integrations/trace-observability.ts)) |
-| **Loop detection** | Sliding-window detector hashes tool-call signatures and text outputs to catch agents stuck repeating themselves. |
-| **Tool output control** | Per-tool truncation, post-consumption compression, optional Zod validation on tool results. |
-| **Pluggable shared memory** | Default in-process KV; swap in Redis / Postgres / Engram by implementing `MemoryStore`. |
+| **Pluggable shared memory** | Default in-process KV; swap in Redis / Postgres / your own backend by implementing `MemoryStore`. |
+
+Production controls (context strategies, task retry with backoff, loop detection, tool output truncation/compression) are covered in the [Production Checklist](#production-checklist).
 
 ## Quick Start
 
 Requires Node.js >= 18.
 
-### Run a working team in 30 seconds
+### Try it locally
 
-The fastest way to see the framework in action: clone, install, run.
+Clone, install, run.
 
 ```bash
 git clone https://github.com/JackChen-me/open-multi-agent && cd open-multi-agent
@@ -118,28 +137,7 @@ console.log(`Success: ${result.success}`)
 console.log(`Tokens: ${result.totalTokenUsage.output_tokens} output tokens`)
 ```
 
-What happens under the hood:
-
-```
-agent_start coordinator
-task_start design-api
-task_complete design-api
-task_start implement-handlers
-task_start scaffold-tests         // independent tasks run in parallel
-task_complete scaffold-tests
-task_complete implement-handlers
-task_start review-code            // unblocked after implementation
-task_complete review-code
-agent_complete coordinator        // synthesizes final result
-Success: true
-Tokens: 12847 output tokens
-```
-
-### Run from the shell
-
-For shell and CI, the package exposes a JSON-first binary. See [docs/cli.md](./docs/cli.md) for `oma run`, `oma task`, `oma provider`, exit codes, and file formats.
-
-## Three Ways to Run
+### Three Ways to Run
 
 | Mode | Method | When to use | Example |
 |------|--------|-------------|---------|
@@ -148,6 +146,10 @@ For shell and CI, the package exposes a JSON-first binary. See [docs/cli.md](./d
 | Explicit pipeline | `runTasks()` | You define the task graph and assignments | [`basics/task-pipeline`](examples/basics/task-pipeline.ts) |
 
 For MapReduce-style fan-out without task dependencies, use `AgentPool.runParallel()` directly. See [`patterns/fan-out-aggregate`](examples/patterns/fan-out-aggregate.ts).
+
+### Run from the shell
+
+For shell and CI, the package exposes a JSON-first binary. See [docs/cli.md](./docs/cli.md) for `oma run`, `oma task`, `oma provider`, exit codes, and file formats.
 
 ## Examples
 
@@ -176,21 +178,31 @@ Run any script with `npx tsx examples/<path>.ts`.
 
 ## How is this different from X?
 
-**vs. [LangGraph JS](https://github.com/langchain-ai/langgraphjs).** LangGraph is declarative graph orchestration: you define nodes, edges, and conditional routing, then `compile()` and `invoke()`. `open-multi-agent` is goal-driven: a coordinator decomposes the goal into a task DAG at runtime. Pick LangGraph for fixed production topology with mature checkpointing; pick this for less typing and faster iteration on multi-agent flows.
+A quick router. Mechanism breakdown follows.
 
-**vs. [Mastra](https://github.com/mastra-ai/mastra).** Mastra ships a Supervisor pattern with manually wired agents and workflows; `open-multi-agent` ships a Coordinator that auto-decomposes the goal, with `runTeam(team, "Build a REST API")` as the entry point. Choose explicit topology (Mastra) versus goal-to-result automation (us) based on whether the workflow is known up front.
+| If you need | Pick |
+|-------------|------|
+| Fixed production topology with mature checkpointing | [LangGraph JS](https://github.com/langchain-ai/langgraphjs) |
+| Explicit Supervisor + hand-wired workflows | [Mastra](https://github.com/mastra-ai/mastra) |
+| Python stack with mature multi-agent ecosystem | [CrewAI](https://github.com/crewAIInc/crewAI) |
+| Single-agent LLM call layer for 60+ providers | [Vercel AI SDK](https://github.com/vercel/ai) |
+| **TypeScript, goal to result with auto task decomposition** | **open-multi-agent** |
 
-**vs. [CrewAI](https://github.com/crewAIInc/crewAI).** CrewAI is the mature Python choice; if your stack is Python, use CrewAI. `open-multi-agent` is TypeScript-native: 3 runtime dependencies, embeds directly in Node.js, with roughly comparable orchestration capability. Choose on language fit.
+**vs. LangGraph JS.** LangGraph compiles a declarative graph (nodes, edges, conditional routing) into an invokable. `open-multi-agent` runs a Coordinator that decomposes the goal into a task DAG at runtime, then auto-parallelizes independents. Same end (orchestrated execution), opposite directions: LangGraph is graph-first, OMA is goal-first.
 
-**vs. [Vercel AI SDK](https://github.com/vercel/ai).** AI SDK is the LLM call layer: a unified TypeScript client for 60+ providers with streaming, tool calls, and structured outputs. It does not orchestrate multi-agent teams. They compose: use AI SDK for single-agent work, reach for this when you need a team.
+**vs. Mastra.** Both are TypeScript-native. Mastra's Supervisor pattern requires you to wire agents and workflows by hand; OMA's Coordinator does the wiring at runtime from the goal string. If the workflow is known up front, Mastra's explicitness pays off. If you'd rather not enumerate every step, OMA's `runTeam(team, goal)` is one call.
+
+**vs. CrewAI.** CrewAI is the mature multi-agent option in Python. OMA targets TypeScript backends with three runtime dependencies and direct Node.js embedding. Roughly comparable orchestration surface; the choice is language stack.
+
+**vs. Vercel AI SDK.** AI SDK is the LLM call layer (unified client for 60+ providers, streaming, tool calls, structured outputs). It does not orchestrate multi-agent teams. The two compose: AI SDK for single-agent work, OMA when you need a team.
 
 ## Ecosystem
 
-`open-multi-agent` is a new project (launched 2026-04-01, MIT). The ecosystem is still forming, so the lists below are short and honest.
+`open-multi-agent` launched 2026-04-01 under MIT. Public users and integrations to date:
 
 ### In production
 
-- **[temodar-agent](https://github.com/xeloxa/temodar-agent)** (~50 stars). WordPress security analysis platform by [Ali Sünbül](https://github.com/xeloxa). Uses our built-in tools (`bash`, `file_*`, `grep`) directly in its Docker runtime. Confirmed production use.
+- **[temodar-agent](https://github.com/xeloxa/temodar-agent)** (~60 stars). WordPress security analysis platform by [Ali Sünbül](https://github.com/xeloxa). Uses our built-in tools (`bash`, `file_*`, `grep`) directly in its Docker runtime. Confirmed production use.
 - **Cybersecurity SOC (home lab).** A private setup running Qwen 2.5 + DeepSeek Coder entirely offline via Ollama, building an autonomous SOC pipeline on Wazuh + Proxmox. Early user, not yet public.
 
 Using `open-multi-agent` in production or a side project? [Open a discussion](https://github.com/JackChen-me/open-multi-agent/discussions) and we will list it here.
@@ -278,209 +290,30 @@ Together: live progress for ops, traces for debugging and cost attribution, a sh
 
 ## Tool Configuration
 
-Agents can be configured with fine-grained tool access control using presets, allowlists, and denylists.
+- **Pick a preset.** `toolPreset: 'readonly' | 'readwrite' | 'full'` covers most agents.
+- **Narrow further.** Combine `tools` (allowlist) and `disallowedTools` (denylist) on top of the preset.
+- **Bring your own.** `defineTool()` + `customTools`, or `agent.addTool()` at runtime.
+- **Cap output cost.** `outputSchema`, `maxToolOutputChars`, and `compressToolResults`.
+- **MCP.** Connect external servers via `connectMCPTools()` from `open-multi-agent/mcp`.
 
-### Tool Presets
-
-Predefined tool sets for common use cases:
-
-```typescript
-const readonlyAgent: AgentConfig = {
-  name: 'reader',
-  model: 'claude-sonnet-4-6',
-  toolPreset: 'readonly',  // file_read, grep, glob
-}
-
-const readwriteAgent: AgentConfig = {
-  name: 'editor',
-  model: 'claude-sonnet-4-6',
-  toolPreset: 'readwrite',  // file_read, file_write, file_edit, grep, glob
-}
-
-const fullAgent: AgentConfig = {
-  name: 'executor',
-  model: 'claude-sonnet-4-6',
-  toolPreset: 'full',  // file_read, file_write, file_edit, grep, glob, bash
-}
-```
-
-### Advanced Filtering
-
-Combine presets with allowlists and denylists for precise control:
-
-```typescript
-const customAgent: AgentConfig = {
-  name: 'custom',
-  model: 'claude-sonnet-4-6',
-  toolPreset: 'readwrite',        // Start with: file_read, file_write, file_edit, grep, glob
-  tools: ['file_read', 'grep'],   // Allowlist: intersect with preset = file_read, grep
-  disallowedTools: ['grep'],      // Denylist: subtract = file_read only
-}
-```
-
-**Resolution order:** preset → allowlist → denylist → framework safety rails.
-
-### Custom Tools
-
-Two ways to give an agent a tool that is not in the built-in set.
-
-**Inject at config time** via `customTools` on `AgentConfig`. Good when the orchestrator wires up tools centrally. Tools defined here bypass preset/allowlist filtering but still respect `disallowedTools`.
-
-```typescript
-import { defineTool } from '@jackchen_me/open-multi-agent'
-import { z } from 'zod'
-
-const weatherTool = defineTool({
-  name: 'get_weather',
-  description: 'Look up current weather for a city.',
-  inputSchema: z.object({ city: z.string() }),
-  execute: async ({ city }) => ({ data: await fetchWeather(city) }),
-})
-
-const agent: AgentConfig = {
-  name: 'assistant',
-  model: 'claude-sonnet-4-6',
-  customTools: [weatherTool],
-}
-```
-
-**Register at runtime** via `agent.addTool(tool)`. Tools added this way are always available, regardless of filtering.
-
-### Tool Output Control
-
-Long tool outputs can blow up conversation size and cost. Two controls work together.
-
-**Validation (optional).** Add `outputSchema` to catch malformed tool results before they are forwarded:
-
-> **Note — two different `outputSchema` fields.** The one on `defineTool()` /
-> `ToolDefinition` (shown below) validates a single **tool's** `ToolResult.data`
-> — it is always a `ZodSchema<string>` because tool output is serialised as
-> text. The `outputSchema` on [`AgentConfig`](examples/patterns/structured-output.ts)
-> is different: it validates the **agent's final answer** as parsed JSON
-> against an arbitrary Zod schema (see _Structured output_ in `examples/`).
-> Different types, different scopes — TypeScript won't warn you if you mix
-> them up, so pick the one that matches the layer you're working at.
-
-```typescript
-const jsonTool = defineTool({
-  name: 'json_tool',
-  description: 'Return JSON payload as string.',
-  inputSchema: z.object({}),
-  outputSchema: z.string().refine((value) => {
-    try {
-      JSON.parse(value)
-      return true
-    } catch {
-      return false
-    }
-  }, 'Output must be valid JSON'),
-  execute: async () => ({ data: '{"ok": true}' }),
-})
-```
-
-**Truncation.** Cap an individual tool result to a head + tail excerpt with a marker in between:
-
-```typescript
-const agent: AgentConfig = {
-  // ...
-  maxToolOutputChars: 10_000, // applies to every tool this agent runs
-}
-
-// Per-tool override (takes priority over AgentConfig.maxToolOutputChars):
-const bigQueryTool = defineTool({
-  // ...
-  maxOutputChars: 50_000,
-})
-```
-
-**Post-consumption compression.** Once the agent has acted on a tool result, compress older copies in the transcript so they stop costing input tokens on every subsequent turn. Error results are never compressed.
-
-```typescript
-const agent: AgentConfig = {
-  // ...
-  compressToolResults: true,                 // default threshold: 500 chars
-  // or: compressToolResults: { minChars: 2_000 }
-}
-```
-
-### MCP Tools (Model Context Protocol)
-
-`open-multi-agent` can connect to any MCP server and expose its tools directly to agents.
-
-```typescript
-import { connectMCPTools } from '@jackchen_me/open-multi-agent/mcp'
-
-const { tools, disconnect } = await connectMCPTools({
-  command: 'npx',
-  args: ['-y', '@modelcontextprotocol/server-github'],
-  env: { GITHUB_TOKEN: process.env.GITHUB_TOKEN },
-  namePrefix: 'github',
-})
-
-// Register each MCP tool in your ToolRegistry, then include their names in AgentConfig.tools
-// Don't forget cleanup when done
-await disconnect()
-```
-
-Notes:
-- `@modelcontextprotocol/sdk` is an optional peer dependency, only needed when using MCP.
-- Current transport support is stdio.
-- MCP input validation is delegated to the MCP server (`inputSchema` is `z.any()`).
-
-See [`integrations/mcp-github`](examples/integrations/mcp-github.ts) for a full runnable setup.
+Full details in [docs/tool-configuration.md](./docs/tool-configuration.md).
 
 ## Shared Memory
 
-Teams can share a namespaced key-value store so later agents see earlier agents' findings. Enable it with a boolean for the default in-process store:
+Teams can share a namespaced key-value store so later agents see earlier agents' findings. Use `sharedMemory: true` for the default in-process store, or implement `MemoryStore` and pass it via `sharedMemoryStore` for Redis, Postgres, Engram, etc. Keys are namespaced as `<agentName>/<key>` before they reach the store. SDK-only: the CLI cannot pass runtime objects.
 
-```typescript
-const team = orchestrator.createTeam('research-team', {
-  name: 'research-team',
-  agents: [researcher, writer],
-  sharedMemory: true,
-})
-```
-
-For durable or cross-process backends (Redis, Postgres, Engram, etc.), implement the `MemoryStore` interface and pass it via `sharedMemoryStore`. Keys are still namespaced as `<agentName>/<key>` before reaching the store:
-
-```typescript
-import type { MemoryStore } from '@jackchen_me/open-multi-agent'
-
-class RedisStore implements MemoryStore { /* get/set/list/delete/clear */ }
-
-const team = orchestrator.createTeam('durable-team', {
-  name: 'durable-team',
-  agents: [researcher, writer],
-  sharedMemoryStore: new RedisStore(),
-})
-```
-
-When both are provided, `sharedMemoryStore` wins. SDK-only: the CLI cannot pass runtime objects.
+See [docs/shared-memory.md](./docs/shared-memory.md).
 
 ## Context Management
 
-Long-running agents can hit input token ceilings fast. Set `contextStrategy` on `AgentConfig` to control how the conversation shrinks as it grows:
+Long-running agents hit input token ceilings fast. `AgentConfig.contextStrategy` controls how the conversation shrinks:
 
-```typescript
-const agent: AgentConfig = {
-  name: 'long-runner',
-  model: 'claude-sonnet-4-6',
-  // Pick one:
-  contextStrategy: { type: 'sliding-window', maxTurns: 20 },
-  // contextStrategy: { type: 'summarize', maxTokens: 80_000, summaryModel: 'claude-haiku-4-5' },
-  // contextStrategy: { type: 'compact', maxTokens: 100_000, preserveRecentTurns: 4 },
-  // contextStrategy: { type: 'custom', compress: (messages, estimatedTokens, ctx) => ... },
-}
-```
+- `sliding-window`: keep the last N turns, drop the rest. Cheapest.
+- `summarize`: send old turns to a summary model, keep the summary in place.
+- `compact`: rule-based truncation, no extra LLM call.
+- `custom`: supply your own `compress(messages, estimatedTokens)`.
 
-| Strategy | When to reach for it |
-|----------|----------------------|
-| `sliding-window` | Cheapest. Keep the last N turns, drop the rest. |
-| `summarize` | Send old turns to a summary model; keep the summary in place of the originals. |
-| `compact` | Rule-based: truncate large assistant text blocks and tool results, keep recent turns intact. No extra LLM call. |
-| `custom` | Supply your own `compress(messages, estimatedTokens, ctx)` function. |
-
-Pairs well with `compressToolResults` and `maxToolOutputChars` above.
+See [docs/context-management.md](./docs/context-management.md).
 
 ## Supported Providers
 
@@ -507,7 +340,7 @@ The framework ships a wired-in provider name for each of these. You set `provide
 | Gemini | `provider: 'gemini'` | `GEMINI_API_KEY` | `gemini-2.5-pro` | Native Google GenAI SDK. Requires `npm install @google/genai`. |
 | OpenAI (GPT) | `provider: 'openai'` | `OPENAI_API_KEY` | `gpt-4o` | |
 | Azure OpenAI | `provider: 'azure-openai'` | `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT` | `gpt-4` | Optional `AZURE_OPENAI_API_VERSION`, `AZURE_OPENAI_DEPLOYMENT`. |
-| GitHub Copilot | `provider: 'copilot'` | `GITHUB_TOKEN` | `gpt-4o` | Custom token-exchange flow on top of OpenAI protocol. |
+| GitHub Copilot | `provider: 'copilot'` | `GITHUB_COPILOT_TOKEN` (falls back to `GITHUB_TOKEN`) | `gpt-4o` | Custom token-exchange flow on top of OpenAI protocol. |
 | Grok (xAI) | `provider: 'grok'` | `XAI_API_KEY` | `grok-4` | OpenAI-compatible; endpoint is `api.x.ai/v1`. |
 | DeepSeek | `provider: 'deepseek'` | `DEEPSEEK_API_KEY` | `deepseek-chat` | OpenAI-compatible. `deepseek-chat` (V3, coding) or `deepseek-reasoner` (thinking mode). |
 | MiniMax (global) | `provider: 'minimax'` | `MINIMAX_API_KEY` | `MiniMax-M2.7` | OpenAI-compatible. |
@@ -570,8 +403,6 @@ Before going live, wire up the controls that protect token spend, recover from f
 | Hard-cap spend | `maxTokenBudget` on the orchestrator | `OrchestratorConfig` |
 | Catch stuck agents | `loopDetection` with `onLoopDetected: 'terminate'` (or a custom handler) | `AgentConfig` |
 | Trace and audit | `onTrace` to your tracing backend; persist `renderTeamRunDashboard(result)` | `OrchestratorConfig` |
-
-End-to-end production patterns live under [`examples/production/`](./examples/production/).
 
 ## Contributing
 

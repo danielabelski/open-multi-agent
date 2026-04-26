@@ -13,7 +13,8 @@
 <h1 align="center">Open Multi-Agent</h1>
 
 <p align="center">
-  面向 TypeScript 的轻量多智能体编排框架。
+  <strong>给一个目标，自动得到任务 DAG。</strong><br/>
+  原生 TypeScript 多智能体编排，3 个运行时依赖。
 </p>
 
 <p align="center">
@@ -23,6 +24,7 @@
   <a href="https://codecov.io/gh/JackChen-me/open-multi-agent"><img src="https://codecov.io/gh/JackChen-me/open-multi-agent/graph/badge.svg" alt="codecov"></a>
   <a href="https://github.com/JackChen-me/open-multi-agent/blob/main/package.json"><img src="https://img.shields.io/badge/runtime_deps-3-brightgreen" alt="runtime deps"></a>
   <a href="https://github.com/JackChen-me/open-multi-agent/stargazers"><img src="https://img.shields.io/github/stars/JackChen-me/open-multi-agent" alt="GitHub stars"></a>
+  <a href="https://github.com/JackChen-me/open-multi-agent/network/members"><img src="https://img.shields.io/github/forks/JackChen-me/open-multi-agent" alt="GitHub forks"></a>
 </p>
 
 <p align="center">
@@ -31,30 +33,47 @@
 
 <br />
 
-`open-multi-agent` 是面向 TypeScript 后端的多智能体编排框架。给定一个目标，协调者 agent 会将其拆解为任务 DAG，并行执行独立任务，合成最终结果。仅 3 个运行时依赖，可直接嵌入任意现有 Node.js 后端，让工程师专注于目标，而非任务图。
+`open-multi-agent` 是面向 TypeScript 后端的多智能体编排框架。给定一个目标，协调者 agent 会将其拆解为任务 DAG，并行执行独立任务，合成最终结果。仅 3 个运行时依赖，可直接嵌入任意现有 Node.js 后端。
+
+> **工程师只描述目标，不画任务图。**
+
+通过 `onProgress` 实时流出来的一次典型运行：
+
+```
+agent_start coordinator
+task_start design-api
+task_complete design-api
+task_start implement-handlers
+task_start scaffold-tests         // 无依赖的任务并行执行
+task_complete scaffold-tests
+task_complete implement-handlers
+task_start review-code            // 实现完成后自动解锁
+task_complete review-code
+agent_complete coordinator        // 综合所有结果
+Success: true
+Tokens: 12847 output tokens
+```
 
 ## 功能一览
 
 | 能力 | 说明 |
 |------|------|
-| **工具与委托** | 6 个内置工具（`bash`、`file_read`、`file_write`、`file_edit`、`grep`、`glob`），加可选启用的 `delegate_to_agent`。用 `defineTool()` + Zod 自定义工具。 |
-| **MCP 集成** | 通过 `connectMCPTools()` 接入任意 MCP server。([`mcp-github`](examples/integrations/mcp-github.ts)) |
-| **同队混用 provider** | Anthropic、OpenAI、Azure、Gemini、Grok、DeepSeek、MiniMax、Qiniu、Copilot 原生支持；Ollama / vLLM / LM Studio / OpenRouter / Groq 走 OpenAI 兼容协议。([完整列表](#支持的-provider)) |
+| **目标驱动协调者** | 一句 `runTeam(team, goal)`，协调者把目标拆成任务 DAG，并行执行独立任务，合成最终结果。 |
+| **同队混用 provider** | 9 家原生：Anthropic、OpenAI、Azure、Gemini、Grok、DeepSeek、MiniMax、Qiniu、Copilot；Ollama / vLLM / LM Studio / OpenRouter / Groq 走 OpenAI 兼容协议。([完整列表](#支持的-provider)) |
+| **工具 + MCP** | 6 个内置（`bash`、`file_*`、`grep`、`glob`），可选启用 `delegate_to_agent`，用 `defineTool()` + Zod 自定义，任意 MCP server 通过 `connectMCPTools()` 接入。 |
 | **流式 + 结构化输出** | 每个 adapter 都支持 token 级流式输出；用 Zod schema 校验最终答复，解析失败自动重试。([`structured-output`](examples/patterns/structured-output.ts)) |
-| **上下文策略** | `sliding-window`、`summarize`、`compact`，或自定义压缩函数，把长跑 agent 控制在 token 上限内。 |
-| **任务重试** | 每个任务可设 `maxRetries`，指数退避封顶 30 秒。([`task-retry`](examples/patterns/task-retry.ts)) |
 | **可观测性** | `onProgress` 事件、`onTrace` span，运行结束后渲染任务 DAG 的 HTML dashboard。([`trace-observability`](examples/integrations/trace-observability.ts)) |
-| **循环检测** | 滑动窗口检测器对工具调用签名和文本输出做哈希，提前发现卡死的 agent。 |
-| **工具输出控制** | 单工具截断、消费后压缩、可选用 Zod 校验工具返回值。 |
-| **可插拔共享记忆** | 默认进程内 KV；实现 `MemoryStore` 接口即可换 Redis / Postgres / Engram。 |
+| **可插拔共享记忆** | 默认进程内 KV；实现 `MemoryStore` 接口即可换 Redis / Postgres / 自家后端。 |
+
+生产化控制（上下文策略、任务重试退避、循环检测、工具输出截断/压缩）见 [生产化清单](#生产化清单)。
 
 ## 快速开始
 
 要求 Node.js >= 18。
 
-### 30 秒跑通一个团队
+### 本地试跑
 
-最快的体验路径，克隆、安装、跑就行：
+克隆、安装、跑：
 
 ```bash
 git clone https://github.com/JackChen-me/open-multi-agent && cd open-multi-agent
@@ -118,28 +137,7 @@ console.log(`Success: ${result.success}`)
 console.log(`Tokens: ${result.totalTokenUsage.output_tokens} output tokens`)
 ```
 
-执行过程：
-
-```
-agent_start coordinator
-task_start design-api
-task_complete design-api
-task_start implement-handlers
-task_start scaffold-tests         // 无依赖的任务并行执行
-task_complete scaffold-tests
-task_complete implement-handlers
-task_start review-code            // 实现完成后自动解锁
-task_complete review-code
-agent_complete coordinator        // 综合所有结果
-Success: true
-Tokens: 12847 output tokens
-```
-
-### 从命令行运行
-
-包里还自带一个叫 `oma` 的命令行工具，给 shell 和 CI 场景用，输出都是 JSON。`oma run`、`oma task`、`oma provider`、退出码、文件格式都在 [docs/cli.md](./docs/cli.md) 里。
-
-## 三种运行模式
+### 三种运行模式
 
 | 模式 | 方法 | 适用场景 | 示例 |
 |------|------|----------|------|
@@ -148,6 +146,10 @@ Tokens: 12847 output tokens
 | 显式任务管线 | `runTasks()` | 你自己定义任务图和分配 | [`basics/task-pipeline`](examples/basics/task-pipeline.ts) |
 
 要 MapReduce 风格的 fan-out 但不需要任务依赖，直接用 `AgentPool.runParallel()`。例子见 [`patterns/fan-out-aggregate`](examples/patterns/fan-out-aggregate.ts)。
+
+### 从命令行运行
+
+包里还自带一个叫 `oma` 的命令行工具，给 shell 和 CI 场景用，输出都是 JSON。`oma run`、`oma task`、`oma provider`、退出码、文件格式都在 [docs/cli.md](./docs/cli.md) 里。
 
 ## 示例
 
@@ -176,21 +178,31 @@ Tokens: 12847 output tokens
 
 ## 和其他框架怎么选
 
-**对比 [LangGraph JS](https://github.com/langchain-ai/langgraphjs)。** LangGraph 是声明式图编排：自己定义节点、边、条件路由，再 `compile()` + `invoke()`。`open-multi-agent` 是目标驱动：协调者在运行时把目标拆成任务 DAG。要锁定生产拓扑、有成熟 checkpoint 选 LangGraph；想少写代码、快速迭代多智能体方案选这边。
+按需求快速选型。下面有逐个机制对比。
 
-**对比 [Mastra](https://github.com/mastra-ai/mastra)。** Mastra 走 Supervisor 模式，agent、workflow、Supervisor 都得手接；`open-multi-agent` 走 Coordinator 自动拆解，入口就是一句 `runTeam(team, "构建一个 REST API")`。流程已经定型选显式拓扑（Mastra），还是给目标让框架决策（这边），按工作流是否已知来定。
+| 你的需求 | 选 |
+|----------|----|
+| 固定的生产拓扑 + 成熟的 checkpoint | [LangGraph JS](https://github.com/langchain-ai/langgraphjs) |
+| 显式 Supervisor + 手写 workflow | [Mastra](https://github.com/mastra-ai/mastra) |
+| Python 栈 + 成熟多智能体生态 | [CrewAI](https://github.com/crewAIInc/crewAI) |
+| 60+ provider 的单智能体 LLM 调用层 | [Vercel AI SDK](https://github.com/vercel/ai) |
+| **TypeScript + 一句话从目标到结果，自动拆任务** | **open-multi-agent** |
 
-**对比 [CrewAI](https://github.com/crewAIInc/crewAI)。** CrewAI 是 Python 阵营成熟方案，栈是 Python 用它就行。`open-multi-agent` 走 TypeScript 原生：3 个运行时依赖、直接嵌入 Node.js、编排能力大致持平。按语言栈选。
+**对比 LangGraph JS。** LangGraph 把声明式图（节点、边、条件路由）编译成可调用对象。`open-multi-agent` 是 Coordinator 在运行时把目标拆成任务 DAG，再自动并行无依赖项。终点一样（编排执行），方向相反：LangGraph 图优先，OMA 目标优先。
 
-**对比 [Vercel AI SDK](https://github.com/vercel/ai)。** AI SDK 是 LLM 调用层：统一的 TypeScript 客户端，覆盖 60+ provider，支持流式、tool call、结构化输出。它不做多智能体编排。两者互补：单智能体用 AI SDK，需要团队协作叠在上面用这个。
+**对比 Mastra。** 两者都原生 TypeScript。Mastra 的 Supervisor 模式要你手接 agent 和 workflow；OMA 的 Coordinator 在运行时从目标字符串自动接好。流程已经定型，Mastra 的显式性能赚回成本；不想枚举每一步，OMA 一句 `runTeam(team, goal)` 就够。
+
+**对比 CrewAI。** CrewAI 是 Python 阵营成熟的多智能体方案。OMA 面向 TypeScript 后端，3 个运行时依赖，直接嵌入 Node.js。编排能力大致持平，按语言栈选。
+
+**对比 Vercel AI SDK。** AI SDK 是 LLM 调用层（统一客户端，覆盖 60+ provider，支持流式、tool call、结构化输出）。它不做多智能体编排。两者互补：单智能体用 AI SDK，需要团队协作叠在上面用 OMA。
 
 ## 生态
 
-项目 2026-04-01 发布，MIT 协议。生态还在成型，下面的列表不长，但都是真的。
+2026-04-01 发布，MIT 协议。当前公开在用与集成的项目：
 
 ### 生产环境在用
 
-- **[temodar-agent](https://github.com/xeloxa/temodar-agent)**（约 50 stars）。WordPress 安全分析平台，作者 [Ali Sünbül](https://github.com/xeloxa)。在 Docker runtime 里直接用我们的内置工具（`bash`、`file_*`、`grep`）。已确认生产环境使用。
+- **[temodar-agent](https://github.com/xeloxa/temodar-agent)**（约 60 stars）。WordPress 安全分析平台，作者 [Ali Sünbül](https://github.com/xeloxa)。在 Docker runtime 里直接用我们的内置工具（`bash`、`file_*`、`grep`）。已确认生产环境使用。
 - **家用服务器 Cybersecurity SOC。** 本地完全离线跑 Qwen 2.5 + DeepSeek Coder（通过 Ollama），在 Wazuh + Proxmox 上搭自主 SOC 流水线。早期用户，未公开。
 
 如果你在生产或 side project 里用了 `open-multi-agent`，[请开个 Discussion](https://github.com/JackChen-me/open-multi-agent/discussions)，我加上来。
@@ -278,206 +290,30 @@ Tokens: 12847 output tokens
 
 ## 工具配置
 
-三层叠起来用：preset（预设）、tools（白名单）、disallowedTools（黑名单）。
+- **选预设。** `toolPreset: 'readonly' | 'readwrite' | 'full'` 覆盖大部分 agent。
+- **再细化。** 在预设之上叠加 `tools`（白名单）和 `disallowedTools`（黑名单）。
+- **接自家工具。** `defineTool()` + `customTools`，或运行时 `agent.addTool()`。
+- **管输出成本。** `outputSchema`、`maxToolOutputChars`、`compressToolResults`。
+- **MCP。** 通过 `open-multi-agent/mcp` 的 `connectMCPTools()` 接外部服务器。
 
-### 工具预设
-
-三种内置 preset：
-
-```typescript
-const readonlyAgent: AgentConfig = {
-  name: 'reader',
-  model: 'claude-sonnet-4-6',
-  toolPreset: 'readonly',  // file_read, grep, glob
-}
-
-const readwriteAgent: AgentConfig = {
-  name: 'editor',
-  model: 'claude-sonnet-4-6',
-  toolPreset: 'readwrite',  // file_read, file_write, file_edit, grep, glob
-}
-
-const fullAgent: AgentConfig = {
-  name: 'executor',
-  model: 'claude-sonnet-4-6',
-  toolPreset: 'full',  // file_read, file_write, file_edit, grep, glob, bash
-}
-```
-
-### 高级过滤
-
-```typescript
-const customAgent: AgentConfig = {
-  name: 'custom',
-  model: 'claude-sonnet-4-6',
-  toolPreset: 'readwrite',        // 起点：file_read, file_write, file_edit, grep, glob
-  tools: ['file_read', 'grep'],   // 白名单：与预设取交集 = file_read, grep
-  disallowedTools: ['grep'],      // 黑名单：再减去 = 只剩 file_read
-}
-```
-
-**解析顺序：** preset → allowlist → denylist → 框架安全护栏。
-
-### 自定义工具
-
-装一个不在内置集里的工具，有两种方式。
-
-**配置时注入。** 通过 `AgentConfig.customTools` 传入。编排层统一挂工具的时候用这个。这里定义的工具会绕过 preset 和白名单，但仍受 `disallowedTools` 限制。
-
-```typescript
-import { defineTool } from '@jackchen_me/open-multi-agent'
-import { z } from 'zod'
-
-const weatherTool = defineTool({
-  name: 'get_weather',
-  description: '查询某城市当前天气。',
-  inputSchema: z.object({ city: z.string() }),
-  execute: async ({ city }) => ({ data: await fetchWeather(city) }),
-})
-
-const agent: AgentConfig = {
-  name: 'assistant',
-  model: 'claude-sonnet-4-6',
-  customTools: [weatherTool],
-}
-```
-
-**运行时注册。** `agent.addTool(tool)`。这种方式加的工具始终可用，不受任何过滤规则影响。
-
-### 工具输出控制
-
-工具返回太长会快速撑大对话和成本。两个开关配合着用。
-
-**校验（可选）。** 给工具加 `outputSchema`，在结果回传前拦截结构错误：
-
-> **注意 —— 有两个同名的 `outputSchema`。** 这里 `defineTool()` / `ToolDefinition`
-> 上的 `outputSchema`（下例所示）校验的是单个**工具**的 `ToolResult.data`，类型
-> 固定为 `ZodSchema<string>`，因为工具输出始终以字符串形式序列化。
-> [`AgentConfig`](examples/patterns/structured-output.ts) 上同名的 `outputSchema`
-> 则完全不同：它把 **agent 的最终回答**按 JSON 解析后，用任意 Zod schema 进行
-> 校验（详见 `examples/` 里的"结构化输出"示例）。两者类型和作用域都不一样，
-> 且 TypeScript 不会提示混用，请根据所处层级选用对应的那个。
-
-```typescript
-const jsonTool = defineTool({
-  name: 'json_tool',
-  description: '以字符串返回 JSON 载荷。',
-  inputSchema: z.object({}),
-  outputSchema: z.string().refine((value) => {
-    try {
-      JSON.parse(value)
-      return true
-    } catch {
-      return false
-    }
-  }, '输出必须是合法 JSON'),
-  execute: async () => ({ data: '{"ok": true}' }),
-})
-```
-
-**截断。** 把单次工具结果压成 head + tail 摘要（中间放一个标记）：
-
-```typescript
-const agent: AgentConfig = {
-  // ...
-  maxToolOutputChars: 10_000, // 该 agent 所有工具的默认上限
-}
-
-// 单工具覆盖（优先级高于 AgentConfig.maxToolOutputChars）：
-const bigQueryTool = defineTool({
-  // ...
-  maxOutputChars: 50_000,
-})
-```
-
-**消费后压缩。** agent 用完某个工具结果之后，把历史副本压缩掉，后续每轮就不再重复消耗输入 token。错误结果不压缩。
-
-```typescript
-const agent: AgentConfig = {
-  // ...
-  compressToolResults: true,                 // 默认阈值 500 字符
-  // 或：compressToolResults: { minChars: 2_000 }
-}
-```
-
-### MCP 工具（Model Context Protocol）
-
-可以连任意 MCP 服务器，把它的工具直接给 agent 用。
-
-```typescript
-import { connectMCPTools } from '@jackchen_me/open-multi-agent/mcp'
-
-const { tools, disconnect } = await connectMCPTools({
-  command: 'npx',
-  args: ['-y', '@modelcontextprotocol/server-github'],
-  env: { GITHUB_TOKEN: process.env.GITHUB_TOKEN },
-  namePrefix: 'github',
-})
-
-// 把每个 MCP 工具注册进你的 ToolRegistry，然后在 AgentConfig.tools 里引用它们的名字
-// 用完别忘了清理
-await disconnect()
-```
-
-注意事项：
-- `@modelcontextprotocol/sdk` 是 optional peer dependency，只在用 MCP 时才要装。
-- 当前只支持 stdio transport。
-- MCP 的入参校验交给 MCP 服务器自己（`inputSchema` 是 `z.any()`）。
-
-完整例子见 [`integrations/mcp-github`](examples/integrations/mcp-github.ts)。
+完整文档：[docs/tool-configuration.md](./docs/tool-configuration.md)。
 
 ## 共享内存
 
-团队可以共用一个命名空间化的 key-value 存储，让后续 agent 看到前面 agent 的发现。用布尔值启用默认的进程内存储：
+团队可以共用一个命名空间化的 key-value 存储，让后续 agent 看到前面 agent 的发现。`sharedMemory: true` 启用默认的进程内存储；要 Redis、Postgres、Engram 这类后端，实现 `MemoryStore` 接口并通过 `sharedMemoryStore` 传入即可。键到 store 之前会按 `<agentName>/<key>` 做命名空间封装。仅 SDK 可用，CLI 无法序列化运行时对象。
 
-```typescript
-const team = orchestrator.createTeam('research-team', {
-  name: 'research-team',
-  agents: [researcher, writer],
-  sharedMemory: true,
-})
-```
-
-需要持久化或跨进程的后端（Redis、Postgres、Engram 等）？实现 `MemoryStore` 接口并通过 `sharedMemoryStore` 注入，键仍会在到达 store 前按 `<agentName>/<key>` 做命名空间封装：
-
-```typescript
-import type { MemoryStore } from '@jackchen_me/open-multi-agent'
-
-class RedisStore implements MemoryStore { /* get/set/list/delete/clear */ }
-
-const team = orchestrator.createTeam('durable-team', {
-  name: 'durable-team',
-  agents: [researcher, writer],
-  sharedMemoryStore: new RedisStore(),
-})
-```
-
-两者都提供时，`sharedMemoryStore` 优先。此字段仅 SDK 可用，CLI 无法序列化运行时对象。
+详见 [docs/shared-memory.md](./docs/shared-memory.md)。
 
 ## 上下文管理
 
-长时间运行的 agent 很容易撞上输入 token 上限。在 `AgentConfig` 里设 `contextStrategy`，控制对话变长时怎么收缩：
+长时间运行的 agent 很容易撞上输入 token 上限。`AgentConfig.contextStrategy` 决定对话变长时怎么收缩：
 
-```typescript
-const agent: AgentConfig = {
-  name: 'long-runner',
-  model: 'claude-sonnet-4-6',
-  // 选一种：
-  contextStrategy: { type: 'sliding-window', maxTurns: 20 },
-  // contextStrategy: { type: 'summarize', maxTokens: 80_000, summaryModel: 'claude-haiku-4-5' },
-  // contextStrategy: { type: 'compact', maxTokens: 100_000, preserveRecentTurns: 4 },
-  // contextStrategy: { type: 'custom', compress: (messages, estimatedTokens, ctx) => ... },
-}
-```
+- `sliding-window`：只保留最近 N 轮，其余丢弃。最省事。
+- `summarize`：老对话发给摘要模型，用摘要替代原文。
+- `compact`：基于规则截断，不额外调用 LLM。
+- `custom`：传入自己的 `compress(messages, estimatedTokens)` 函数。
 
-| 策略 | 什么时候用 |
-|------|------------|
-| `sliding-window` | 最省事。只保留最近 N 轮，其余丢弃。 |
-| `summarize` | 老对话发给摘要模型，用摘要替代原文。 |
-| `compact` | 基于规则：截断过长的 assistant 文本块和 tool 结果，保留最近若干轮。不额外调用 LLM。 |
-| `custom` | 传入自己的 `compress(messages, estimatedTokens, ctx)` 函数。 |
-
-和上面的 `compressToolResults`、`maxToolOutputChars` 搭着用效果更好。
+详见 [docs/context-management.md](./docs/context-management.md)。
 
 ## 支持的 Provider
 
@@ -504,7 +340,7 @@ const agent: AgentConfig = {
 | Gemini | `provider: 'gemini'` | `GEMINI_API_KEY` | `gemini-2.5-pro` | 原生 Google GenAI SDK，需 `npm install @google/genai`。 |
 | OpenAI (GPT) | `provider: 'openai'` | `OPENAI_API_KEY` | `gpt-4o` | |
 | Azure OpenAI | `provider: 'azure-openai'` | `AZURE_OPENAI_API_KEY`、`AZURE_OPENAI_ENDPOINT` | `gpt-4` | 可选 `AZURE_OPENAI_API_VERSION`、`AZURE_OPENAI_DEPLOYMENT`。 |
-| GitHub Copilot | `provider: 'copilot'` | `GITHUB_TOKEN` | `gpt-4o` | OpenAI 协议 + 自定义 token 交换流程。 |
+| GitHub Copilot | `provider: 'copilot'` | `GITHUB_COPILOT_TOKEN`（回退到 `GITHUB_TOKEN`） | `gpt-4o` | OpenAI 协议 + 自定义 token 交换流程。 |
 | Grok (xAI) | `provider: 'grok'` | `XAI_API_KEY` | `grok-4` | OpenAI 兼容，端点 `api.x.ai/v1`。 |
 | DeepSeek | `provider: 'deepseek'` | `DEEPSEEK_API_KEY` | `deepseek-chat` | OpenAI 兼容。`deepseek-chat`（V3，写代码）或 `deepseek-reasoner`（思考模式）。 |
 | MiniMax（全球） | `provider: 'minimax'` | `MINIMAX_API_KEY` | `MiniMax-M2.7` | OpenAI 兼容。 |
@@ -567,8 +403,6 @@ const localAgent: AgentConfig = {
 | 总额封顶 | orchestrator 上设 `maxTokenBudget` | `OrchestratorConfig` |
 | 卡死检测 | `loopDetection` + `onLoopDetected: 'terminate'`（或自定义 handler） | `AgentConfig` |
 | 追踪与审计 | `onTrace` 接你的 tracing 后端；落盘 `renderTeamRunDashboard(result)` | `OrchestratorConfig` |
-
-完整的端到端生产化样例都在 [`examples/production/`](./examples/production/) 下。
 
 ## 参与贡献
 
