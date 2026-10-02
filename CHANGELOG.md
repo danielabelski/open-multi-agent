@@ -2,12 +2,25 @@
 
 ## Unreleased
 
+## 1.21.1 - 2026-10-02
+
 ### Fixed
 
-- Corrected `runImage()` documentation to distinguish validation exceptions:
-  values other than `ImageModelError` propagate to the caller, while
-  `ImageModelError` follows the normal retry and model-fallback rules.
-  Exhausted model failures still resolve as a failed result.
+- Clarified runImage() documentation: an ImageModelError thrown by validate
+  follows the normal retry and model-fallback rules, values other than
+  ImageModelError propagate to the caller, and exhausted model failures still
+  resolve as a failed result.
+
+### Compatibility
+
+- No public API, runtime, or dependency changes: existing ^1.x callers upgrade
+  with no code changes.
+- Callers that read the previous JSDoc as an exhaustive list of rejection
+  reasons ('rejects only for invalid options or when signal aborts') should rely
+  on the updated wording; code written against the old text keeps working.
+- create-oma-app takes a patch bump only to refresh its pinned core dependency
+  in generated templates; otel is unchanged and not republished, but its
+  post-publish smoke check validates compatibility against the new core.
 
 ## 1.21.0 - 2026-09-25
 
