@@ -20,10 +20,9 @@ import type {
   ToolResultMetadata,
   ToolUseContext,
 } from '../types.js'
-import type { ToolDefinition } from '../types.js'
+import type { ToolDefinition, ZodSchema } from '../types.js'
 import { ToolRegistry } from './framework.js'
 import { Semaphore } from '../utils/semaphore.js'
-import type { ZodSchema } from 'zod'
 import {
   assertApprovalDecision,
   assertApprovalRequest,
