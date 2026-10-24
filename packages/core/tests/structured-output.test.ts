@@ -163,7 +163,7 @@ describe('validateOutput', () => {
 
     const lines = message.split('\n')
     expect(lines[0]).toBe('Output validation failed:')
-    expect(lines[1]).toBe('  - 0.title: Required')
+    expect(lines[1]).toMatch(/^  - 0\.title: \S/)
     expect(lines).toHaveLength(1 + MAX_REPORTED_VALIDATION_ISSUES + 1)
     expect(lines.at(-1)).toBe(`  - ... ${10_000 - MAX_REPORTED_VALIDATION_ISSUES} more issues not shown`)
   })

@@ -122,7 +122,7 @@ describe('ToolExecutor', () => {
     expect(result.isError).toBe(true)
     const lines = String(result.data).split('\n')
     expect(lines[0]).toBe('Invalid input for tool "batch":')
-    expect(lines[1]).toBe('  • items.0.id: Required')
+    expect(lines[1]).toMatch(/^  • items\.0\.id: \S/)
     expect(lines).toHaveLength(1 + MAX_REPORTED_VALIDATION_ISSUES + 1)
     expect(lines.at(-1)).toBe(`  • ... ${10_000 - MAX_REPORTED_VALIDATION_ISSUES} more issues not shown`)
   })

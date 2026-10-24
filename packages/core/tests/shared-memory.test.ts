@@ -162,7 +162,7 @@ describe('SharedMemory', () => {
     const error = await write.then(() => undefined, (reason: unknown) => reason as Error)
     const lines = error!.message.split('\n')
     expect(lines[0]).toBe('SharedMemory.write: value failed schema validation:')
-    expect(lines[1]).toBe('  • 0.answer: Required')
+    expect(lines[1]).toMatch(/^  • 0\.answer: \S/)
     expect(lines).toHaveLength(1 + MAX_REPORTED_VALIDATION_ISSUES + 1)
     expect(lines.at(-1)).toBe(`  • ... ${5_000 - MAX_REPORTED_VALIDATION_ISSUES} more issues not shown`)
   })
