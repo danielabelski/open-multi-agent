@@ -23,6 +23,7 @@ import type {
 import type { ToolDefinition, ZodSchema } from '../types.js'
 import { ToolRegistry } from './framework.js'
 import { Semaphore } from '../utils/semaphore.js'
+import { formatValidationIssues } from '../utils/validation-issues.js'
 import {
   assertApprovalDecision,
   assertApprovalRequest,
@@ -340,9 +341,10 @@ export class ToolExecutor {
   private runZodSchema<T>(schema: ZodSchema<T>, rawInput: T) {
     const parseResult = schema.safeParse(rawInput)
     if (!parseResult.success) {
-      const issuesMessage = parseResult.error.issues
-        .map((issue) => `  • ${issue.path.join('.')}: ${issue.message}`)
-        .join('\n')
+      const issuesMessage = formatValidationIssues(parseResult.error.issues, {
+        bullet: '•',
+        rootLabel: '',
+      })
       return {
         ...parseResult,
         issuesMessage,
